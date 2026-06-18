@@ -874,6 +874,7 @@
 
   // ---- 远程控制 ----
   function handleCommand(command) {
+    console.log('handleCommand 被调用:', command);
     var names = { arm: '远程布防', disarm: '远程撤防', toggle_beep: '蜂鸣器切换' };
 
     if (isDemo) {
