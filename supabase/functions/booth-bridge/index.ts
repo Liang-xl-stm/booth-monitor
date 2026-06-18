@@ -78,13 +78,13 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { action } = await req.json();
+    const body = await req.json();
+    const { action } = body;
 
     if (action === "poll") {
       return handlePoll(supabase);
     }
     if (action === "command") {
-      const body = await req.json();
       return handleCommand(supabase, body);
     }
 
@@ -284,8 +284,8 @@ async function handleCommand(
     }
   }
 
-  return json(ok ? 200 : 500, {
-    success: resp.code === 0, code: resp.code, msg: resp.msg,
+  return json(200, {
+    success: ok, code: resp.code, msg: resp.msg,
   });
 }
 

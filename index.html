@@ -894,11 +894,13 @@
     // 即时更新本地状态，不等后端
     supabase.from('device_state').select('beep_enabled, sensor_armed').eq('device_id', currentDeviceId).maybeSingle().then(function(s) {
       var state = s.data || { beep_enabled: true, sensor_armed: true };
+      console.log('更新前状态:', JSON.stringify(state), '指令:', command);
       if (command === 'toggle_beep') state.beep_enabled = !state.beep_enabled;
       else if (command === 'arm') state.sensor_armed = true;
       else if (command === 'disarm') state.sensor_armed = false;
+      console.log('更新后状态:', JSON.stringify(state));
       updateControlButtons(state);
-    });
+    }).catch(function(e) { console.error('状态更新失败:', e); });
 
     // 写入记录 + 调用 Edge Function
     supabase.from('device_commands').insert({ device_id: currentDeviceId, command: command }).then(function(r) {
