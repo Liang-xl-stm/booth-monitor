@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>展台监测系统</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .chart-container { position: relative; width: 100%; }
+  .chart-container canvas { width: 100% !important; }
+  @keyframes pulse-alarm {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.7); }
+    50% { opacity: 0.9; box-shadow: 0 0 0 12px rgba(239,68,68,0); }
+  }
+  @keyframes slide-up {
+    0% { opacity: 0; transform: translateY(12px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<!-- ================================================================
+  登录视图
+================================================================ -->
+<div id="auth-view" class="min-h-screen flex items-center justify-center p-4">
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-blue-600/20 mb-4">
+        <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-white">展台监测系统</h1>
+      <p class="text-gray-500 mt-1">环境监测与防盗报警上位机</p>
+    </div>
+
+    <div id="auth-tabs" class="flex mb-6 bg-gray-800 rounded-lg p-1">
+      <button id="tab-login" type="button" class="flex-1 py-2 text-sm font-medium rounded-md bg-gray-700 text-white transition">登录</button>
+      <button id="tab-register" type="button" class="flex-1 py-2 text-sm font-medium rounded-md text-gray-400 hover:text-white transition">注册</button>
+    </div>
+
+    <form id="auth-form" class="space-y-4">
+      <div>
+        <label class="block text-sm text-gray-400 mb-1.5">账号</label>
+        <input id="auth-username" type="text" required autocomplete="username"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+          placeholder="请输入账号">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-400 mb-1.5">密码</label>
+        <input id="auth-password" type="password" required autocomplete="current-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+          placeholder="请输入密码">
+      </div>
+      <div id="confirm-password-group" class="hidden">
+        <label class="block text-sm text-gray-400 mb-1.5">确认密码</label>
+        <input id="auth-confirm-password" type="password" autocomplete="new-password"
+          class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+          placeholder="再次输入密码">
+      </div>
+      <p id="auth-error" class="text-red-400 text-sm hidden"></p>
+      <button type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition active:scale-[0.98]">
+        <span id="auth-submit-text">登 录</span>
+      </button>
+    </form>
+
+    <button id="btn-demo" type="button"
+      class="w-full mt-3 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-2.5 rounded-lg transition active:scale-[0.98] text-sm border border-gray-700">
+      演示模式（跳过登录直接查看）
+    </button>
+
+    <p class="text-center text-gray-600 text-xs mt-4">
+      默认账号 admin / admin123
+    </p>
+  </div>
+</div>
+
+<!-- ================================================================
+  仪表盘视图
+================================================================ -->
+<div id="dashboard-view" class="hidden min-h-screen">
+
+  <nav class="bg-gray-900 border-b border-gray-800 px-4 lg:px-8 py-3 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-blue-600/20 flex items-center justify-center">
+        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-base font-semibold text-white leading-tight">展台监测</h1>
+        <p id="nav-device-name" class="text-xs text-gray-500">展台监测器-01 · 主展台A区</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="demo-badge" class="text-xs bg-amber-600/20 text-amber-400 border border-amber-600/40 px-2 py-0.5 rounded-full hidden">演示模式</span>
+      <span class="text-xs text-gray-500 hidden sm:inline">上次更新: <span id="nav-last-update">--</span></span>
+      <span id="nav-user-email" class="text-sm text-gray-400 hidden sm:inline"></span>
+      <button id="btn-logout"
+        class="text-sm text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-1.5 rounded-lg transition">
+        退出
+      </button>
+    </div>
+  </nav>
+
+  <main class="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
+
+    <!-- 行1: 实时指标卡片 -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm">当前温度</span>
+          <span class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+            <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75M12 18a6 6 0 006-6c0-3.72-3.36-8.03-6-10.9-2.64 2.87-6 7.18-6 10.9a6 6 0 006 6z"/>
+            </svg>
+          </span>
+        </div>
+        <p id="card-temperature" class="text-3xl font-bold text-white">--</p>
+        <p class="text-xs text-gray-600 mt-1">范围: -40 ~ 85 ℃</p>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm">当前湿度</span>
+          <span class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 21a6 6 0 006-6c0-4.5-6-10-6-10S6 10.5 6 15a6 6 0 006 6z"/>
+            </svg>
+          </span>
+        </div>
+        <p id="card-humidity" class="text-3xl font-bold text-white">--</p>
+        <p class="text-xs text-gray-600 mt-1">范围: 0 ~ 100 %</p>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm">环境光照</span>
+          <span class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+          </span>
+        </div>
+        <p id="card-light" class="text-3xl font-bold text-white">--</p>
+        <p class="text-xs text-gray-600 mt-1">范围: 0 ~ 65535 lx</p>
+      </div>
+      <div id="card-alarm" class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-gray-500 text-sm">报警状态</span>
+          <span class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center" id="alarm-icon">
+            <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </span>
+        </div>
+        <p id="card-alarm-text" class="text-3xl font-bold text-green-400">正常</p>
+        <p class="text-xs text-gray-600 mt-1" id="card-alarm-sub">所有指标正常</p>
+      </div>
+    </div>
+
+    <!-- 行2: 趋势图表 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">温湿度历史趋势</h3>
+        <div class="chart-container" style="height:280px">
+          <canvas id="chart-th"></canvas>
+        </div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">光照强度历史趋势</h3>
+        <div class="chart-container" style="height:280px">
+          <canvas id="chart-light"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- 行3: 控制面板 + 报警记录 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">远程控制</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="text-xs text-gray-500 mb-2 block">传感器布防状态</label>
+            <div class="flex gap-3">
+              <button id="btn-arm"
+                class="flex-1 py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border bg-green-600/20 border-green-600 text-green-400"
+                onclick="handleCommand('arm')">
+                <span class="block text-lg">🔒</span>
+                <span class="mt-1 block">远程布防</span>
+              </button>
+              <button id="btn-disarm"
+                class="flex-1 py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+                onclick="handleCommand('disarm')">
+                <span class="block text-lg">🔓</span>
+                <span class="mt-1 block">远程撤防</span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 mb-2 block">蜂鸣器</label>
+            <button id="btn-beep"
+              class="w-full py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border bg-blue-600/20 border-blue-600 text-blue-400 flex items-center justify-center gap-2"
+              onclick="handleCommand('toggle_beep')">
+              <span class="text-lg" id="beep-icon">🔊</span>
+              <span id="beep-label">已开启</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h3 class="text-sm font-medium text-gray-400 mb-4">报警记录</h3>
+        <div class="overflow-auto max-h-72">
+          <div id="alarm-empty" class="text-center py-12 text-gray-600 hidden"><p>暂无报警记录</p></div>
+          <table class="w-full text-sm" id="alarm-table">
+            <thead>
+              <tr class="text-left text-gray-500 text-xs border-b border-gray-800">
+                <th class="pb-2 font-medium">时间</th><th class="pb-2 font-medium">类型</th><th class="pb-2 font-medium">说明</th>
+              </tr>
+            </thead>
+            <tbody id="alarm-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2" style="max-width:360px"></div>
+
+<!-- ================================================================
+  Chart.js CDN — 动态加载，失败不影响页面运行
+================================================================ -->
+<script>
+(function() {
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+  s.onerror = function() {
+    console.warn('Chart.js CDN 加载失败，尝试备用源...');
+    var s2 = document.createElement('script');
+    s2.src = 'https://unpkg.com/chart.js@4/dist/chart.umd.min.js';
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(s);
+})();
+</script>
+
+<!-- Supabase JS SDK (本地文件) -->
+<script src="supabase.min.js"></script>
+
+<!-- ================================================================
+  主逻辑
+================================================================ -->
+<script>
+(function() {
+  'use strict';
+
+  // ---- 配置 ----
+  var SUPABASE_URL = 'https://injxopkhbbwgegsmyvlw.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_nZMQN_eTGwnUPIzK1YNn6Q_Rgno_PV0';
+
+  // ---- 状态 ----
+  var supabase = null;
+  var isDemo = true;
+  var currentDeviceId = null;
+  var currentUser = null;
+  var tempHumidityChart = null;
+  var lightChart = null;
+  var realtimeChannel = null;
+  var demoTimer = null;
+  var authMode = 'login';
+  var mockState = { sensor_armed: true, beep_enabled: true };
+  var mockTelemetry = [];
+  var mockAlarmEvents = [];
+
+  // ---- DOM 引用 ----
+  var $ = function(id) { return document.getElementById(id); };
+
+  // ---- 模拟数据生成 ----
+  function generateMockData() {
+    var now = new Date();
+    mockTelemetry = [];
+    mockAlarmEvents = [];
+
+    for (var i = 96; i >= 0; i--) {
+      var ts = new Date(now - i * 15 * 60000);
+      var hour = ts.getHours();
+      var isDaytime = hour >= 6 && hour <= 20;
+      var baseTemp = 22 + 4 * Math.sin(hour * Math.PI / 12);
+      mockTelemetry.push({
+        temperature: +(baseTemp + (Math.random() - 0.5) * 3).toFixed(1),
+        humidity: +(55 - 5 * Math.sin(hour * Math.PI / 12) + (Math.random() - 0.5) * 10).toFixed(1),
+        ambient_light: +(isDaytime ? 200 + Math.random() * 1500 : Math.random() * 5).toFixed(0),
+        alarm_status: false,
+        reported_at: ts.toISOString()
+      });
+    }
+
+    var last = mockTelemetry[mockTelemetry.length - 1];
+    last.temperature = 37.5;
+    last.alarm_status = true;
+
+    mockAlarmEvents = [
+      { alarm_code: 1, created_at: new Date(now - 20*3600000).toISOString() },
+      { alarm_code: 0, created_at: new Date(now - 19*3600000).toISOString() },
+      { alarm_code: 3, created_at: new Date(now - 5*3600000).toISOString() },
+      { alarm_code: 0, created_at: new Date(now - 4*3600000).toISOString() },
+      { alarm_code: 1, created_at: now.toISOString() }
+    ];
+  }
+
+  // ---- 演示模式实时模拟 ----
+  function startDemoLoop() {
+    if (demoTimer) clearInterval(demoTimer);
+    demoTimer = setInterval(function() {
+      var now = new Date();
+      var hour = now.getHours();
+      var isDaytime = hour >= 6 && hour <= 20;
+      var baseTemp = 22 + 4 * Math.sin(hour * Math.PI / 12);
+      var baseHum = 55 - 5 * Math.sin(hour * Math.PI / 12);
+
+      var data = {
+        temperature: +(baseTemp + (Math.random() - 0.5) * 3).toFixed(1),
+        humidity: +(baseHum + (Math.random() - 0.5) * 10).toFixed(1),
+        ambient_light: +(isDaytime ? 200 + Math.random() * 1500 : Math.random() * 5).toFixed(0),
+        alarm_status: Math.random() < 0.1,
+        reported_at: now.toISOString()
+      };
+
+      mockTelemetry.push(data);
+      if (mockTelemetry.length > 100) mockTelemetry.shift();
+
+      updateMetricCards(data);
+      updateCharts(mockTelemetry);
+      $('nav-last-update').textContent = formatTime(data.reported_at);
+
+      if (data.alarm_status) {
+        var codes = [1, 2, 3];
+        var code = codes[Math.floor(Math.random() * codes.length)];
+        var evt = { alarm_code: code, created_at: now.toISOString() };
+        mockAlarmEvents.unshift(evt);
+        if (mockAlarmEvents.length > 20) mockAlarmEvents.pop();
+        updateAlarmTable(mockAlarmEvents);
+        showToast('⚠️ 设备触发报警！', 'error');
+      }
+    }, 5000);
+  }
+
+  function enterDemo() {
+    isDemo = true;
+    generateMockData();
+    showDashboard('演示用户');
+    $('demo-badge').classList.remove('hidden');
+    showToast('已进入演示模式，数据为模拟', 'info');
+    startDemoLoop();
+  }
+
+  // ---- Auth Tab 切换 ----
+  function switchAuthTab(mode) {
+    authMode = mode;
+    var isLogin = mode === 'login';
+    $('tab-login').className = isLogin
+      ? 'flex-1 py-2 text-sm font-medium rounded-md bg-gray-700 text-white transition'
+      : 'flex-1 py-2 text-sm font-medium rounded-md text-gray-400 hover:text-white transition';
+    $('tab-register').className = !isLogin
+      ? 'flex-1 py-2 text-sm font-medium rounded-md bg-gray-700 text-white transition'
+      : 'flex-1 py-2 text-sm font-medium rounded-md text-gray-400 hover:text-white transition';
+    $('confirm-password-group').classList.toggle('hidden', isLogin);
+    $('auth-submit-text').textContent = isLogin ? '登 录' : '注 册';
+    $('auth-error').classList.add('hidden');
+    $('btn-demo').classList.toggle('hidden', !isLogin);
+  }
+
+  // ---- Auth 提交 ----
+  function handleAuthSubmit(e) {
+    e.preventDefault();
+    if (!supabase) {
+      $('auth-error').textContent = 'Supabase 未连接，请使用演示模式';
+      $('auth-error').classList.remove('hidden');
+      return;
+    }
+    var username = $('auth-username').value.trim();
+    var password = $('auth-password').value;
+    var errEl = $('auth-error');
+
+    if (!username || !password) {
+      errEl.textContent = '请输入账号和密码';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    if (authMode === 'register') {
+      var confirm = $('auth-confirm-password').value;
+      if (password !== confirm) { errEl.textContent = '两次密码不一致'; errEl.classList.remove('hidden'); return; }
+      if (password.length < 4) { errEl.textContent = '密码至少 4 位'; errEl.classList.remove('hidden'); return; }
+
+      supabase.from('users').select('id').eq('username', username).maybeSingle().then(function(r) {
+        if (r.data) { errEl.textContent = '该账号已被注册'; errEl.classList.remove('hidden'); return; }
+        return supabase.from('users').insert({ username: username, password: password });
+      }).then(function(r) {
+        if (r && r.error) { errEl.textContent = '注册失败: ' + r.error.message; errEl.classList.remove('hidden'); return; }
+        if (r) {
+          localStorage.setItem('booth_monitor_session', JSON.stringify({ username: username, ts: Date.now() }));
+          showDashboard(username);
+        }
+      }).catch(function(err) {
+        errEl.textContent = '注册失败: ' + err.message;
+        errEl.classList.remove('hidden');
+      });
+    } else {
+      supabase.from('users').select('*').eq('username', username).maybeSingle().then(function(r) {
+        if (r.error || !r.data || r.data.password !== password) {
+          errEl.textContent = '账号或密码错误';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        localStorage.setItem('booth_monitor_session', JSON.stringify({ username: username, ts: Date.now() }));
+        showDashboard(username);
+      }).catch(function(err) {
+        errEl.textContent = '登录失败: ' + err.message;
+        errEl.classList.remove('hidden');
+      });
+    }
+  }
+
+  // ---- 登出 ----
+  function handleLogout() {
+    localStorage.removeItem('booth_monitor_session');
+    $('dashboard-view').classList.add('hidden');
+    $('auth-view').classList.remove('hidden');
+    $('btn-demo').classList.remove('hidden');
+    if (realtimeChannel && supabase) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    currentUser = null;
+    isDemo = false;
+  }
+
+  // ---- 进入仪表盘 ----
+  function showDashboard(username) {
+    currentUser = username;
+    $('auth-view').classList.add('hidden');
+    $('dashboard-view').classList.remove('hidden');
+    $('nav-user-email').textContent = username;
+    $('demo-badge').classList.toggle('hidden', !isDemo);
+
+    if (isDemo) {
+      updateMetricCards(mockTelemetry[mockTelemetry.length - 1]);
+      updateCharts(mockTelemetry);
+      updateControlButtons(mockState);
+      updateAlarmTable(mockAlarmEvents);
+      $('nav-last-update').textContent = formatTime(new Date().toISOString());
+    } else {
+      loadRealData();
+    }
+  }
+
+  // ---- 真实数据加载 ----
+  function loadRealData() {
+    if (!supabase) return;
+    supabase.from('devices').select('*').limit(1).then(function(r) {
+      if (r.error || !r.data || r.data.length === 0) {
+        showToast('未找到设备，请先执行 seed.sql', 'error');
+        return;
+      }
+      currentDeviceId = r.data[0].id;
+      $('nav-device-name').textContent = r.data[0].device_name + ' · ' + (r.data[0].location || '');
+
+      return Promise.all([
+        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single(),
+        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(100),
+        supabase.from('device_state').select('*').eq('device_id', currentDeviceId).single(),
+        supabase.from('alarm_events').select('*').eq('device_id', currentDeviceId).order('created_at', { ascending: false }).limit(20)
+      ]);
+    }).then(function(results) {
+      if (!results) return;
+      if (results[0].data) updateMetricCards(results[0].data);
+      if (results[1].data && results[1].data.length) {
+        mockTelemetry = results[1].data;
+        updateCharts(results[1].data);
+        $('nav-last-update').textContent = formatTime(results[1].data[results[1].data.length - 1].reported_at);
+      }
+      if (results[2].data) updateControlButtons(results[2].data);
+      if (results[3].data && results[3].data.length) updateAlarmTable(results[3].data);
+      subscribeRealtime();
+    }).catch(function(err) {
+      console.error('加载数据失败:', err);
+      showToast('数据加载失败: ' + err.message, 'error');
+    });
+  }
+
+  // ---- UI 更新函数 ----
+  function updateMetricCards(data) {
+    $('card-temperature').textContent = data.temperature != null ? data.temperature.toFixed(1) : '--';
+    $('card-humidity').textContent = data.humidity != null ? data.humidity.toFixed(1) : '--';
+    $('card-light').textContent = data.ambient_light != null ? data.ambient_light.toFixed(0) : '--';
+
+    var card = $('card-alarm');
+    var text = $('card-alarm-text');
+    var icon = $('alarm-icon');
+    var sub = $('card-alarm-sub');
+
+    if (data.alarm_status) {
+      text.textContent = '报警中';
+      text.className = 'text-3xl font-bold text-red-400';
+      card.className = 'bg-red-950/30 border border-red-800 rounded-xl p-5';
+      card.style.animation = 'pulse-alarm 1.5s ease-in-out infinite';
+      icon.innerHTML = '<svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3l9.66 16.5H2.34L12 3z"/></svg>';
+      icon.className = 'w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center';
+      sub.textContent = '请及时处理';
+    } else {
+      text.textContent = '正常';
+      text.className = 'text-3xl font-bold text-green-400';
+      card.className = 'bg-gray-900 border border-gray-800 rounded-xl p-5';
+      card.style.animation = '';
+      icon.innerHTML = '<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+      icon.className = 'w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center';
+      sub.textContent = '所有指标正常';
+    }
+  }
+
+  function updateControlButtons(state) {
+    mockState = state;
+    var btnArm = $('btn-arm');
+    var btnDisarm = $('btn-disarm');
+    var btnBeep = $('btn-beep');
+    var beepIcon = $('beep-icon');
+    var beepLabel = $('beep-label');
+    var base = 'flex-1 py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border';
+    var baseInactive = 'flex-1 py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300';
+
+    if (state.sensor_armed) {
+      btnArm.className = base + ' bg-green-600/20 border-green-600 text-green-400';
+      btnDisarm.className = baseInactive;
+    } else {
+      btnDisarm.className = base + ' bg-amber-600/20 border-amber-600 text-amber-400';
+      btnArm.className = baseInactive;
+    }
+
+    if (state.beep_enabled) {
+      btnBeep.className = 'w-full py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border bg-blue-600/20 border-blue-600 text-blue-400 flex items-center justify-center gap-2';
+      beepIcon.textContent = '🔊';
+      beepLabel.textContent = '已开启';
+    } else {
+      btnBeep.className = 'w-full py-3 rounded-xl font-medium text-sm transition-all duration-200 active:scale-[0.97] border border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300 flex items-center justify-center gap-2';
+      beepIcon.textContent = '🔇';
+      beepLabel.textContent = '已静音';
+    }
+  }
+
+  function updateAlarmTable(events) {
+    var tbody = $('alarm-tbody');
+    var table = $('alarm-table');
+    var empty = $('alarm-empty');
+
+    if (!events || events.length === 0) {
+      table.classList.add('hidden');
+      empty.classList.remove('hidden');
+      return;
+    }
+    table.classList.remove('hidden');
+    empty.classList.add('hidden');
+
+    tbody.innerHTML = events.map(function(e) {
+      var b = alarmBadge(e.alarm_code);
+      return '<tr class="border-b border-gray-800/50">' +
+        '<td class="py-2 text-gray-400 text-xs">' + formatTime(e.created_at) + '</td>' +
+        '<td class="py-2"><span class="inline-block px-2 py-0.5 rounded text-xs font-medium ' + b.color + '">' + b.label + '</span></td>' +
+        '<td class="py-2 text-gray-300 text-xs">' + b.desc + '</td></tr>';
+    }).join('');
+  }
+
+  // ---- 图表 ----
+  function buildChartDefaults() {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: {
+          labels: { color: '#9ca3af', usePointStyle: true, pointStyleWidth: 8, padding: 20, font: { size: 11 } }
+        },
+        tooltip: {
+          backgroundColor: '#1f2937', borderColor: '#374151', borderWidth: 1,
+          titleColor: '#f3f4f6', bodyColor: '#d1d5db', padding: 10, cornerRadius: 8
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.06)', tickLength: 0 },
+          ticks: { color: '#6b7280', font: { size: 10 }, maxTicksLimit: 8 }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.06)', tickLength: 0 },
+          ticks: { color: '#6b7280', font: { size: 10 } },
+          border: { display: false }
+        }
+      }
+    };
+  }
+
+  function updateCharts(data) {
+    if (typeof Chart === 'undefined') { console.warn('Chart.js 未加载，跳过图表渲染'); return; }
+
+    var labels = data.map(function(d) {
+      var t = new Date(d.reported_at);
+      return t.toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    });
+
+    try {
+      if (tempHumidityChart) {
+        tempHumidityChart.data.labels = labels;
+        tempHumidityChart.data.datasets[0].data = data.map(function(d) { return d.temperature; });
+        tempHumidityChart.data.datasets[1].data = data.map(function(d) { return d.humidity; });
+        tempHumidityChart.update('none');
+      } else {
+        var ctx1 = $('chart-th').getContext('2d');
+        var defs = buildChartDefaults();
+        tempHumidityChart = new Chart(ctx1, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: '温度 (℃)', data: data.map(function(d) { return d.temperature; }),
+                borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.04)',
+                borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
+                pointHoverBackgroundColor: '#f87171', tension: 0.3, yAxisID: 'y'
+              },
+              {
+                label: '湿度 (%)', data: data.map(function(d) { return d.humidity; }),
+                borderColor: '#2dd4bf', backgroundColor: 'rgba(45,212,191,0.04)',
+                borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
+                pointHoverBackgroundColor: '#2dd4bf', tension: 0.3, yAxisID: 'y1'
+              }
+            ]
+          },
+          options: Object.assign({}, defs, {
+            scales: Object.assign({}, defs.scales, {
+              y: Object.assign({}, defs.scales.y, {
+                type:'linear', position:'left',
+                title: { display:true, text:'℃', color:'#f87171', font:{size:10} },
+                min:0, max:50
+              }),
+              y1: {
+                type:'linear', position:'right', grid:{display:false},
+                ticks: { color:'#6b7280', font:{size:10} },
+                title: { display:true, text:'%', color:'#2dd4bf', font:{size:10} },
+                min:0, max:100
+              }
+            })
+          })
+        });
+      }
+
+      if (lightChart) {
+        lightChart.data.labels = labels;
+        lightChart.data.datasets[0].data = data.map(function(d) { return d.ambient_light; });
+        lightChart.update('none');
+      } else {
+        var ctx2 = $('chart-light').getContext('2d');
+        var defs2 = buildChartDefaults();
+        lightChart = new Chart(ctx2, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: '光照 (lx)', data: data.map(function(d) { return d.ambient_light; }),
+              borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)',
+              fill: true, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
+              pointHoverBackgroundColor: '#fbbf24', tension: 0.3
+            }]
+          },
+          options: Object.assign({}, defs2, {
+            scales: Object.assign({}, defs2.scales, {
+              y: Object.assign({}, defs2.scales.y, {
+                title: { display:true, text:'lx', color:'#fbbf24', font:{size:10} }
+              })
+            })
+          })
+        });
+      }
+    } catch (e) {
+      console.error('图表渲染失败:', e);
+    }
+  }
+
+  // ---- Realtime 订阅 ----
+  function subscribeRealtime() {
+    if (!currentDeviceId || !supabase) return;
+    if (realtimeChannel) { supabase.removeChannel(realtimeChannel); }
+
+    realtimeChannel = supabase.channel('device-monitor')
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'telemetry', filter:'device_id=eq.'+currentDeviceId },
+        function(payload) {
+          updateMetricCards(payload.new);
+          $('nav-last-update').textContent = formatTime(payload.new.reported_at);
+          if (tempHumidityChart) {
+            var label = new Date(payload.new.reported_at).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+            addChartPoint(tempHumidityChart, label, [payload.new.temperature, payload.new.humidity]);
+            addChartPoint(lightChart, label, [payload.new.ambient_light]);
+          }
+          if (payload.new.alarm_status) showToast('⚠️ 设备触发报警！', 'error');
+        })
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'alarm_events', filter:'device_id=eq.'+currentDeviceId },
+        function(payload) {
+          var badge = alarmBadge(payload.new.alarm_code);
+          showToast(badge.label + ': ' + badge.desc, payload.new.alarm_code === 0 ? 'success' : 'error');
+          supabase.from('alarm_events').select('*').eq('device_id', currentDeviceId).order('created_at', { ascending:false }).limit(20).then(function(r) {
+            if (r.data) updateAlarmTable(r.data);
+          });
+        })
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'device_state', filter:'device_id=eq.'+currentDeviceId },
+        function(payload) { updateControlButtons(payload.new); })
+      .subscribe(function(status) {
+        if (status === 'CHANNEL_ERROR') {
+          setTimeout(function() { realtimeChannel = null; subscribeRealtime(); }, 5000);
+        }
+      });
+  }
+
+  function addChartPoint(chart, label, values) {
+    if (!chart) return;
+    chart.data.labels.push(label);
+    values.forEach(function(v, i) { chart.data.datasets[i].data.push(v); });
+    if (chart.data.labels.length > 100) {
+      chart.data.labels.shift();
+      chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
+    }
+    chart.update('none');
+  }
+
+  // ---- 远程控制 ----
+  function handleCommand(command) {
+    var names = { arm: '远程布防', disarm: '远程撤防', toggle_beep: '蜂鸣器切换' };
+
+    if (isDemo) {
+      if (command === 'arm') mockState.sensor_armed = true;
+      else if (command === 'disarm') mockState.sensor_armed = false;
+      else if (command === 'toggle_beep') mockState.beep_enabled = !mockState.beep_enabled;
+      updateControlButtons(mockState);
+      showToast(names[command] + '指令已下发', 'success');
+      return;
+    }
+
+    if (!currentDeviceId || !supabase) {
+      showToast('请先配置 Supabase 连接信息', 'error');
+      return;
+    }
+
+    // 先写入 device_commands 记录
+    supabase.from('device_commands').insert({ device_id: currentDeviceId, command: command }).then(function(r) {
+      if (r.error) { showToast(names[command] + '指令下发失败: ' + r.error.message, 'error'); return; }
+      showToast(names[command] + '指令已下发', 'success');
+
+      // 同时调用 Edge Function 立即发送（非阻塞）
+      var cmdId = r.data ? r.data[0]?.id : null;
+      fetch(SUPABASE_URL + '/functions/v1/booth-bridge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'command',
+          device_id: currentDeviceId,
+          command: command,
+          cmd_id: cmdId,
+        }),
+      }).catch(function() {});
+    });
+  }
+
+  // ---- 工具函数 ----
+  function showToast(message, type) {
+    var container = $('toast-container');
+    var el = document.createElement('div');
+    var colors = {
+      success: 'border-green-600 bg-green-950/80 text-green-300',
+      error: 'border-red-600 bg-red-950/80 text-red-300',
+      info: 'border-blue-600 bg-blue-950/80 text-blue-300'
+    };
+    el.className = 'border ' + (colors[type] || colors.info) + ' rounded-lg px-4 py-3 text-sm shadow-lg backdrop-blur';
+    el.style.animation = 'slide-up 0.3s ease-out';
+    el.textContent = message;
+    container.appendChild(el);
+    setTimeout(function() { el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(function() { el.remove(); }, 300); }, 3500);
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '--';
+    var d = new Date(iso);
+    var pad = function(n) { return String(n).padStart(2,'0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function alarmBadge(code) {
+    var map = {
+      0: { label:'恢复', color:'bg-green-500/20 text-green-400', desc:'恢复正常' },
+      1: { label:'温度过高', color:'bg-red-500/20 text-red-400', desc:'温度超出上限' },
+      2: { label:'湿度过高', color:'bg-red-500/20 text-red-400', desc:'湿度超出上限' },
+      3: { label:'光线过暗', color:'bg-amber-500/20 text-amber-400', desc:'光照低于阈值' }
+    };
+    return map[code] || { label:'未知', color:'bg-gray-500/20 text-gray-400', desc:'未知类型' };
+  }
+
+  // ---- 全局暴露 ----
+  window.handleCommand = handleCommand;
+
+  // ---- 初始化 ----
+  function init() {
+    console.log('展台监测系统 初始化开始');
+
+    // 事件绑定
+    $('tab-login').addEventListener('click', function() { switchAuthTab('login'); });
+    $('tab-register').addEventListener('click', function() { switchAuthTab('register'); });
+    $('auth-form').addEventListener('submit', handleAuthSubmit);
+    $('btn-logout').addEventListener('click', handleLogout);
+    $('btn-demo').addEventListener('click', enterDemo);
+
+    console.log('事件绑定完成');
+
+    // 检查 Supabase 是否可用
+    var hasSupabase = typeof window.supabase !== 'undefined';
+    var hasConfig = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+
+    console.log('Supabase SDK可用:', hasSupabase, '已配置:', hasConfig);
+
+    if (hasSupabase && hasConfig) {
+      try {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log('Supabase 客户端已创建');
+      } catch (e) {
+        console.error('Supabase 初始化失败:', e);
+      }
+    }
+
+    // SDK 加载失败提示
+    if (hasConfig && !hasSupabase) {
+      document.getElementById('btn-demo').classList.remove('hidden');
+      var note = document.querySelector('#auth-view p:last-of-type');
+      if (note) note.textContent = 'SDK 加载失败，请使用演示模式或刷新重试';
+    }
+
+    // 检查本地 session
+    var saved = localStorage.getItem('booth_monitor_session');
+    if (saved) {
+      try {
+        var session = JSON.parse(saved);
+        if (session.username && session.ts && (Date.now() - session.ts < 7*24*3600*1000)) {
+          console.log('恢复会话:', session.username);
+          showDashboard(session.username);
+          return;
+        }
+      } catch (_) {}
+      localStorage.removeItem('booth_monitor_session');
+    }
+
+    // 无 Supabase 配置 → 自动进入演示
+    if (!hasConfig) {
+      console.log('无 Supabase 配置，自动进入演示模式');
+      setTimeout(enterDemo, 200);
+    } else {
+      console.log('显示登录页');
+    }
+  }
+
+  // 页面就绪后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+
+</body>
+</html>
