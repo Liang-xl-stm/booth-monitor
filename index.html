@@ -483,6 +483,7 @@
     if (realtimeChannel && supabase) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
     if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
     if (dataPollTimer) { clearInterval(dataPollTimer); dataPollTimer = null; }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     currentUser = null;
     isDemo = false;
   }
@@ -505,14 +506,32 @@
     } else {
       loadRealData();
       loadSettings();
-      // 每 10 秒拉最新一条数据，保底刷新
+      // 前端主动触发 Edge Function 拉取 oneNET 数据（每 30 秒）
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(callEdgePoll, 30000);
+      callEdgePoll(); // 立即执行一次
+      // 每 10 秒刷新本地最新数据
       if (dataPollTimer) clearInterval(dataPollTimer);
       dataPollTimer = setInterval(refreshLatest, 10000);
     }
   }
 
+  // ---- 调用云端 Edge Function 拉取 oneNET ----
+  function callEdgePoll() {
+    if (isDemo || !SUPABASE_URL) return;
+    fetch(SUPABASE_URL + '/functions/v1/booth-bridge', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ action: 'poll' }),
+    }).catch(function() {});
+  }
+
   // ---- 保底轮询最新数据 ----
   var dataPollTimer = null;
+  var pollTimer = null;
   function refreshLatest() {
     if (!supabase || !currentDeviceId || isDemo) return;
     supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single().then(function(r) {
