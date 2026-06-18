@@ -320,7 +320,7 @@
   var realtimeChannel = null;
   var demoTimer = null;
   var authMode = 'login';
-  var mockState = { sensor_armed: true, beep_enabled: true };
+  var localState = { sensor_armed: true, beep_enabled: true };
   var mockTelemetry = [];
   var mockAlarmEvents = [];
 
@@ -500,7 +500,7 @@
     if (isDemo) {
       updateMetricCards(mockTelemetry[mockTelemetry.length - 1]);
       updateCharts(mockTelemetry);
-      updateControlButtons(mockState);
+      updateControlButtons(localState);
       updateAlarmTable(mockAlarmEvents);
       $('nav-last-update').textContent = formatTime(new Date().toISOString());
     } else {
@@ -607,7 +607,7 @@
   }
 
   function updateControlButtons(state) {
-    mockState = state;
+    localState = state;
     var btnArm = $('btn-arm');
     var btnDisarm = $('btn-disarm');
     var btnBeep = $('btn-beep');
@@ -878,10 +878,10 @@
     var names = { arm: '远程布防', disarm: '远程撤防', toggle_beep: '蜂鸣器切换' };
 
     if (isDemo) {
-      if (command === 'arm') mockState.sensor_armed = true;
-      else if (command === 'disarm') mockState.sensor_armed = false;
-      else if (command === 'toggle_beep') mockState.beep_enabled = !mockState.beep_enabled;
-      updateControlButtons(mockState);
+      if (command === 'arm') localState.sensor_armed = true;
+      else if (command === 'disarm') localState.sensor_armed = false;
+      else if (command === 'toggle_beep') localState.beep_enabled = !localState.beep_enabled;
+      updateControlButtons(localState);
       showToast(names[command] + '指令已下发', 'success');
       return;
     }
@@ -891,16 +891,11 @@
       return;
     }
 
-    // 即时更新本地状态，不等后端
-    supabase.from('device_state').select('beep_enabled, sensor_armed').eq('device_id', currentDeviceId).maybeSingle().then(function(s) {
-      var state = s.data || { beep_enabled: true, sensor_armed: true };
-      console.log('更新前状态:', JSON.stringify(state), '指令:', command);
-      if (command === 'toggle_beep') state.beep_enabled = !state.beep_enabled;
-      else if (command === 'arm') state.sensor_armed = true;
-      else if (command === 'disarm') state.sensor_armed = false;
-      console.log('更新后状态:', JSON.stringify(state));
-      updateControlButtons(state);
-    }).catch(function(e) { console.error('状态更新失败:', e); });
+    // 即时更新本地状态，不等后端，不查DB
+    if (command === 'toggle_beep') localState.beep_enabled = !localState.beep_enabled;
+    else if (command === 'arm') localState.sensor_armed = true;
+    else if (command === 'disarm') localState.sensor_armed = false;
+    updateControlButtons(localState);
 
     // 写入记录 + 调用 Edge Function
     supabase.from('device_commands').insert({ device_id: currentDeviceId, command: command }).then(function(r) {
