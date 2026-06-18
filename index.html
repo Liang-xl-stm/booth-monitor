@@ -312,7 +312,7 @@
 
   // ---- 状态 ----
   var supabase = null;
-  var isDemo = true;
+  var isDemo = false;
   var currentDeviceId = null;
   var currentUser = null;
   var tempHumidityChart = null;
@@ -400,7 +400,7 @@
   function enterDemo() {
     isDemo = true;
     generateMockData();
-    showDashboard('演示用户');
+    showDashboard('演示用户', true);
     $('demo-badge').classList.remove('hidden');
     showToast('已进入演示模式，数据为模拟', 'info');
     startDemoLoop();
@@ -487,8 +487,9 @@
   }
 
   // ---- 进入仪表盘 ----
-  function showDashboard(username) {
+  function showDashboard(username, offline) {
     currentUser = username;
+    if (offline) isDemo = true;
     $('auth-view').classList.add('hidden');
     $('dashboard-view').classList.remove('hidden');
     $('nav-user-email').textContent = username;
