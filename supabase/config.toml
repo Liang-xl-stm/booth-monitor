@@ -1,0 +1,5 @@
+# Supabase 项目配置
+project_id = "injxopkhbbwgegsmyvlw"
+
+[functions.booth-bridge]
+enabled = true

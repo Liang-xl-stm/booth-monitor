@@ -103,12 +103,57 @@
       <span id="demo-badge" class="text-xs bg-amber-600/20 text-amber-400 border border-amber-600/40 px-2 py-0.5 rounded-full hidden">演示模式</span>
       <span class="text-xs text-gray-500 hidden sm:inline">上次更新: <span id="nav-last-update">--</span></span>
       <span id="nav-user-email" class="text-sm text-gray-400 hidden sm:inline"></span>
+      <button id="btn-settings"
+        class="text-sm text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-1.5 rounded-lg transition">
+        ⚙ 设置
+      </button>
       <button id="btn-logout"
         class="text-sm text-gray-400 hover:text-white hover:bg-gray-800 px-3 py-1.5 rounded-lg transition">
         退出
       </button>
     </div>
   </nav>
+
+  <!-- 设置面板 -->
+  <div id="settings-overlay" class="hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6">
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-lg font-semibold text-white">oneNET 绑定设置</h2>
+        <button id="btn-settings-close" class="text-gray-500 hover:text-white text-xl">&times;</button>
+      </div>
+      <form id="settings-form" class="space-y-4">
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">产品 ID</label>
+          <input id="set-product-id" type="text" required
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none"
+            placeholder="Hc8y9729b1">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">设备名称</label>
+          <input id="set-device-name" type="text" required
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none"
+            placeholder="展台监测器-01">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">Access Key</label>
+          <input id="set-access-key" type="text" required
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none font-mono"
+            placeholder="产品的 access_key">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-400 mb-1">oneNET 用户 ID</label>
+          <input id="set-user-id" type="text" required
+            class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:border-blue-500 outline-none"
+            placeholder="516969">
+        </div>
+        <p id="settings-error" class="text-red-400 text-xs hidden"></p>
+        <button type="submit"
+          class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg transition active:scale-[0.98] text-sm">
+          保存配置
+        </button>
+      </form>
+    </div>
+  </div>
 
   <main class="p-4 lg:p-8 max-w-7xl mx-auto space-y-6">
 
@@ -457,6 +502,7 @@
       $('nav-last-update').textContent = formatTime(new Date().toISOString());
     } else {
       loadRealData();
+      loadSettings();
     }
   }
 
@@ -735,6 +781,60 @@
     }
     chart.update('none');
   }
+
+  // ---- 设置面板 ----
+  function loadSettings() {
+    if (!currentUser || !supabase) return;
+    supabase.from('profiles').select('*').eq('username', currentUser).maybeSingle().then(function(r) {
+      if (r.data) {
+        $('set-product-id').value = r.data.product_id || '';
+        $('set-device-name').value = r.data.device_name || '';
+        $('set-access-key').value = r.data.access_key || '';
+        $('set-user-id').value = r.data.onenet_user_id || '';
+        $('nav-device-name').textContent = (r.data.device_name || '--') + ' · 已绑定';
+      }
+    }).catch(function() {});
+  }
+
+  $('btn-settings').addEventListener('click', function() {
+    if (isDemo) { showToast('演示模式无需设置', 'info'); return; }
+    loadSettings();
+    $('settings-overlay').classList.remove('hidden');
+  });
+
+  $('btn-settings-close').addEventListener('click', function() {
+    $('settings-overlay').classList.add('hidden');
+  });
+
+  $('settings-overlay').addEventListener('click', function(e) {
+    if (e.target === this) $('settings-overlay').classList.add('hidden');
+  });
+
+  $('settings-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    if (!supabase || !currentUser) return;
+
+    var data = {
+      username: currentUser,
+      product_id: $('set-product-id').value.trim(),
+      device_name: $('set-device-name').value.trim(),
+      access_key: $('set-access-key').value.trim(),
+      onenet_user_id: $('set-user-id').value.trim(),
+      updated_at: new Date().toISOString(),
+    };
+
+    supabase.from('profiles').upsert(data, { onConflict: 'username' }).then(function(r) {
+      if (r.error) {
+        $('settings-error').textContent = '保存失败: ' + r.error.message;
+        $('settings-error').classList.remove('hidden');
+        return;
+      }
+      $('settings-error').classList.add('hidden');
+      $('settings-overlay').classList.add('hidden');
+      $('nav-device-name').textContent = data.device_name + ' · 已绑定';
+      showToast('配置已保存', 'success');
+    });
+  });
 
   // ---- 远程控制 ----
   function handleCommand(command) {

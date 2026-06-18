@@ -1,6 +1,4 @@
 node_modules/
 bridge/
-supabase/
 .claude/
-*.sql
 model-*.json
