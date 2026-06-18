@@ -20,9 +20,9 @@ const corsHeaders = {
 // Token 生成
 // ============================================================
 
-async function makeToken(accessKey: string, onenetUserId: string): Promise<string> {
+async function makeToken(accessKey: string, productId: string): Promise<string> {
   const et = Math.floor(Date.now() / 1000) + 3600;
-  const res = `userid/${onenetUserId}`;
+  const res = `products/${productId}`;
   const signStr = `${et}\n${API_METHOD}\n${res}\n${API_VERSION}`;
 
   const keyBytes = base64ToBytes(accessKey);
@@ -48,15 +48,15 @@ function base64ToBytes(b64: string): Uint8Array {
 // oneNET 请求
 // ============================================================
 
-async function oneGet(path: string, accessKey: string, onenetUserId: string) {
-  const token = await makeToken(accessKey, onenetUserId);
+async function oneGet(path: string, accessKey: string, productId: string) {
+  const token = await makeToken(accessKey, productId);
   const resp = await fetch(`${ONEAPI_BASE}${path}`, { headers: { Authorization: token } });
   const text = await resp.text();
   try { return JSON.parse(text); } catch { return { code: -1, msg: text }; }
 }
 
-async function onePost(path: string, accessKey: string, onenetUserId: string, body: Record<string, unknown>) {
-  const token = await makeToken(accessKey, onenetUserId);
+async function onePost(path: string, accessKey: string, productId: string, body: Record<string, unknown>) {
+  const token = await makeToken(accessKey, productId);
   const resp = await fetch(`${ONEAPI_BASE}${path}`, {
     method: "POST",
     headers: { Authorization: token, "Content-Type": "application/json" },
@@ -110,25 +110,39 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
   // 获取所有关联设备
   const { data: devices } = await supabase.from("devices").select("*");
 
-  for (const profile of profiles) {
-    if (!profile.access_key) continue;
+  const defaultAccessKey = Deno.env.get("ONENET_ACCESS_KEY")!;
+  const defaultProductId = Deno.env.get("ONENET_PRODUCT_ID")!;
 
-    // 找到该用户对应的设备
-    const device = devices?.find((d: any) =>
-      d.product_id === profile.product_id && d.device_name === profile.device_name
+  for (const device of (devices || [])) {
+    // 找对应用户配置，没有则用环境变量默认值
+    const profile = profiles?.find((p: any) =>
+      p.device_name === device.device_name && p.product_id === device.product_id
     );
-    if (!device) continue;
+    const accessKey = profile?.access_key || defaultAccessKey;
+    const productId = profile?.product_id || device.product_id || defaultProductId;
+    if (!accessKey) continue;
 
     try {
-      const path = `/thingmodel/query-device-property?product_id=${encodeURIComponent(profile.product_id)}&device_name=${encodeURIComponent(profile.device_name)}`;
-      const resp = await oneGet(path, profile.access_key, profile.onenet_user_id);
+      const path = `/thingmodel/query-device-property?product_id=${encodeURIComponent(productId)}&device_name=${encodeURIComponent(device.device_name)}`;
+      const resp = await oneGet(path, accessKey, productId);
 
       if (resp.code !== 0) continue;
 
-      const props = resp.data || {};
+      // oneNET 返回数组: [{identifier, value, time}, ...], value 都是字符串
+      const items: any[] = resp.data || [];
       const g = (k: string) => {
-        const e = props[k];
-        return e && typeof e === "object" && "value" in e ? e.value : undefined;
+        const item = items.find((i: any) => i.identifier === k);
+        if (!item || item.value === undefined) return undefined;
+        const v = item.value;
+        // 转换类型: "true"/"false" → boolean, 数字字符串 → number
+        if (v === "true") return true;
+        if (v === "false") return false;
+        const n = Number(v);
+        return isNaN(n) ? v : n;
+      };
+      const getTime = (k: string) => {
+        const item = items.find((i: any) => i.identifier === k);
+        return item?.time;
       };
 
       const temp = g("temperature");
@@ -139,10 +153,8 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
       const armed = g("sensor_armed");
 
       if (temp != null || hum != null || light != null) {
-        let reportedAt = new Date().toISOString();
-        for (const k of Object.keys(props)) {
-          if (props[k]?.time) { reportedAt = new Date(props[k].time).toISOString(); break; }
-        }
+        const rawTime = getTime("temperature") || getTime("humidity") || getTime("ambient_light");
+        const reportedAt = rawTime ? new Date(rawTime).toISOString() : new Date().toISOString();
         await supabase.from("telemetry").insert({
           device_id: device.id,
           temperature: temp,
@@ -151,7 +163,7 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
           alarm_status: typeof alarm === "boolean" ? alarm : false,
           reported_at: reportedAt,
         });
-        results.push(`${profile.username}: OK`);
+        results.push(`${device.device_name}: OK`);
       }
 
       if (typeof beep === "boolean" || typeof armed === "boolean") {
@@ -163,7 +175,7 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
         );
       }
     } catch (e: any) {
-      results.push(`${profile.username}: ${e.message}`);
+      results.push(`${device.device_name}: ${e.message}`);
     }
   }
 
@@ -182,15 +194,17 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
       const { data: dev } = await supabase.from("devices").select("*").eq("id", cmd.device_id).maybeSingle();
       if (!dev) { await supabase.from("device_commands").update({ status: "failed" }).eq("id", cmd.id); continue; }
 
-      const profile = profiles.find((p: any) =>
+      const profile = profiles?.find((p: any) =>
         p.product_id === dev.product_id && p.device_name === dev.device_name
       );
-      if (!profile || !profile.access_key) continue;
+      const cmdAccessKey = profile?.access_key || defaultAccessKey;
+      const cmdProductId = profile?.product_id || dev.product_id || defaultProductId;
+      if (!cmdAccessKey) continue;
 
       const svc = svcMap[cmd.command];
       if (!svc) continue;
 
-      const resp = await onePost("/thingmodel/call-service", profile.access_key, profile.onenet_user_id, {
+      const resp = await onePost("/thingmodel/call-service", cmdAccessKey, cmdProductId, {
         product_id: dev.product_id,
         device_name: dev.device_name,
         identifier: svc,
@@ -199,6 +213,21 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
 
       const newStatus = resp.code === 0 ? "sent" : "failed";
       await supabase.from("device_commands").update({ status: newStatus }).eq("id", cmd.id);
+
+      // 同时更新 device_state，前端图标会即时响应
+      if (newStatus === "sent") {
+        if (cmd.command === "toggle_beep") {
+          // 翻转蜂鸣器状态
+          const { data: curState } = await supabase.from("device_state").select("beep_enabled").eq("device_id", dev.id).maybeSingle();
+          const newBeep = curState ? !curState.beep_enabled : true;
+          await supabase.from("device_state").upsert({ device_id: dev.id, beep_enabled: newBeep, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+        } else if (cmd.command === "arm") {
+          await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+        } else if (cmd.command === "disarm") {
+          await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: false, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+        }
+      }
+
       results.push(`CMD ${dev.device_name}: ${cmd.command} → ${newStatus}`);
     }
   }
@@ -219,13 +248,17 @@ async function handleCommand(
 
   const { data: profile } = await supabase.from("profiles").select("*")
     .eq("product_id", dev.product_id).eq("device_name", dev.device_name).maybeSingle();
-  if (!profile || !profile.access_key) return json(400, { error: "未配置 oneNET" });
+
+  const defAccessKey = Deno.env.get("ONENET_ACCESS_KEY")!;
+  const defProductId = Deno.env.get("ONENET_PRODUCT_ID")!;
+  const cmdKey = profile?.access_key || defAccessKey;
+  const cmdPid = profile?.product_id || dev.product_id || defProductId;
 
   const svcMap: Record<string, string> = { arm: "arm_sensor", disarm: "disarm_sensor", toggle_beep: "toggle_beep" };
   const svc = svcMap[body.command];
   if (!svc) return json(400, { error: "未知指令" });
 
-  const resp = await onePost("/thingmodel/call-service", profile.access_key, profile.onenet_user_id, {
+  const resp = await onePost("/thingmodel/call-service", cmdKey, cmdPid, {
     product_id: dev.product_id,
     device_name: dev.device_name,
     identifier: svc,
@@ -238,7 +271,20 @@ async function handleCommand(
     }).eq("id", body.cmd_id);
   }
 
-  return json(resp.code === 0 ? 200 : 500, {
+  // 即时更新 device_state
+  const ok = resp.code === 0;
+  if (ok) {
+    if (body.command === "toggle_beep") {
+      const { data: s } = await supabase.from("device_state").select("beep_enabled").eq("device_id", dev.id).maybeSingle();
+      await supabase.from("device_state").upsert({ device_id: dev.id, beep_enabled: s ? !s.beep_enabled : true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+    } else if (body.command === "arm") {
+      await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+    } else if (body.command === "disarm") {
+      await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: false, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
+    }
+  }
+
+  return json(ok ? 200 : 500, {
     success: resp.code === 0, code: resp.code, msg: resp.msg,
   });
 }

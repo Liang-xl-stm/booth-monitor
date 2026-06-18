@@ -890,12 +890,20 @@
       return;
     }
 
-    // 先写入 device_commands 记录
+    // 即时更新本地状态，不等后端
+    supabase.from('device_state').select('beep_enabled, sensor_armed').eq('device_id', currentDeviceId).maybeSingle().then(function(s) {
+      var state = s.data || { beep_enabled: true, sensor_armed: true };
+      if (command === 'toggle_beep') state.beep_enabled = !state.beep_enabled;
+      else if (command === 'arm') state.sensor_armed = true;
+      else if (command === 'disarm') state.sensor_armed = false;
+      updateControlButtons(state);
+    });
+
+    // 写入记录 + 调用 Edge Function
     supabase.from('device_commands').insert({ device_id: currentDeviceId, command: command }).then(function(r) {
       if (r.error) { showToast(names[command] + '指令下发失败: ' + r.error.message, 'error'); return; }
       showToast(names[command] + '指令已下发', 'success');
 
-      // 同时调用 Edge Function 立即发送（非阻塞）
       var cmdId = r.data ? r.data[0]?.id : null;
       fetch(SUPABASE_URL + '/functions/v1/booth-bridge', {
         method: 'POST',
