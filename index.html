@@ -521,10 +521,7 @@
     if (isDemo || !SUPABASE_URL) return;
     fetch(SUPABASE_URL + '/functions/v1/booth-bridge', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'poll' }),
     }).catch(function() {});
   }
@@ -905,10 +902,7 @@
       var cmdId = r.data ? r.data[0]?.id : null;
       fetch(SUPABASE_URL + '/functions/v1/booth-bridge', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'command',
           device_id: currentDeviceId,
