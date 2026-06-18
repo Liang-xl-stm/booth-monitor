@@ -482,6 +482,7 @@
     $('btn-demo').classList.remove('hidden');
     if (realtimeChannel && supabase) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
     if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    if (dataPollTimer) { clearInterval(dataPollTimer); dataPollTimer = null; }
     currentUser = null;
     isDemo = false;
   }
@@ -504,7 +505,22 @@
     } else {
       loadRealData();
       loadSettings();
+      // 每 10 秒拉最新一条数据，保底刷新
+      if (dataPollTimer) clearInterval(dataPollTimer);
+      dataPollTimer = setInterval(refreshLatest, 10000);
     }
+  }
+
+  // ---- 保底轮询最新数据 ----
+  var dataPollTimer = null;
+  function refreshLatest() {
+    if (!supabase || !currentDeviceId || isDemo) return;
+    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single().then(function(r) {
+      if (r.data) {
+        updateMetricCards(r.data);
+        $('nav-last-update').textContent = formatTime(r.data.reported_at);
+      }
+    });
   }
 
   // ---- 真实数据加载 ----
