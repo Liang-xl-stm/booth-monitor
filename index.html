@@ -755,8 +755,6 @@
             if (r.data) updateAlarmTable(r.data);
           });
         })
-      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'device_state', filter:'device_id=eq.'+currentDeviceId },
-        function(payload) { updateControlButtons(payload.new); })
       .subscribe(function(status) {
         if (status === 'CHANNEL_ERROR') {
           setTimeout(function() { realtimeChannel = null; subscribeRealtime(); }, 5000);
