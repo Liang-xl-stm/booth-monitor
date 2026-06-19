@@ -531,7 +531,7 @@
       }
     });
     // 取最新20条，反转后给图表（图表从左到右时间递增）
-    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(20).then(function(r) {
+    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).gte('reported_at', new Date(Date.now() - 12*3600*1000).toISOString()).order('reported_at', { ascending: false }).limit(20).then(function(r) {
       if (r.data && r.data.length > 0) { r.data.reverse(); updateCharts(r.data); }
     });
   }
@@ -549,7 +549,7 @@
 
       return Promise.all([
         supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single(),
-        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(20),
+        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).gte('reported_at', new Date(Date.now() - 12*3600*1000).toISOString()).order('reported_at', { ascending: false }).limit(20),
         supabase.from('device_state').select('*').eq('device_id', currentDeviceId).single(),
         supabase.from('alarm_events').select('*').eq('device_id', currentDeviceId).order('created_at', { ascending: false }).limit(20)
       ]);
