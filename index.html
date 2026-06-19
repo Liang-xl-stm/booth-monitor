@@ -380,7 +380,7 @@
       };
 
       mockTelemetry.push(data);
-      if (mockTelemetry.length > 100) mockTelemetry.shift();
+      if (mockTelemetry.length > 20) mockTelemetry.shift();
 
       updateMetricCards(data);
       updateCharts(mockTelemetry);
@@ -553,7 +553,7 @@
 
       return Promise.all([
         supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single(),
-        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(100),
+        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(20),
         supabase.from('device_state').select('*').eq('device_id', currentDeviceId).single(),
         supabase.from('alarm_events').select('*').eq('device_id', currentDeviceId).order('created_at', { ascending: false }).limit(20)
       ]);
@@ -825,7 +825,7 @@
     values.forEach(function(v, i) {
       chart.data.datasets[i].data.push({ x: ts, y: v });
     });
-    if (chart.data.datasets[0].data.length > 100) {
+    if (chart.data.datasets[0].data.length > 20) {
       chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
     }
     chart.update('none');
