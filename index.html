@@ -793,8 +793,64 @@
         });
       }
     } catch (e) {
-      console.error('图表渲染失败:', e);
+      console.error('图表渲染失败:', e.message || e, 'Chart存在:', typeof Chart !== 'undefined');
+      // 降级：不用时间轴，直接显示
+      try {
+        renderChartsFallback(data);
+      } catch (e2) {
+        console.error('降级渲染也失败:', e2.message || e2);
+      }
     }
+  }
+
+  // 降级渲染：不用时间轴，字符串标签
+  function renderChartsFallback(data) {
+    var labels = data.map(function(d) {
+      var t = new Date(d.reported_at);
+      return t.getHours() + ':' + ('0'+t.getMinutes()).slice(-2);
+    });
+
+    if (tempHumidityChart) {
+      tempHumidityChart.destroy();
+      tempHumidityChart = null;
+    }
+    if (lightChart) {
+      lightChart.destroy();
+      lightChart = null;
+    }
+
+    var ctx1 = $('chart-th').getContext('2d');
+    tempHumidityChart = new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: '温度 (℃)', data: data.map(function(d) { return d.temperature; }), borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+          { label: '湿度 (%)', data: data.map(function(d) { return d.humidity; }), borderColor: '#2dd4bf', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y1' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { ticks: { color: '#6b7280', maxTicksLimit: 6 } },
+          y: { type:'linear', position:'left', ticks:{color:'#6b7280'}, min:0, max:50 },
+          y1: { type:'linear', position:'right', ticks:{color:'#6b7280'}, min:0, max:100, grid:{display:false} }
+        }
+      }
+    });
+
+    var ctx2 = $('chart-light').getContext('2d');
+    lightChart = new Chart(ctx2, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{ label: '光照 (lx)', data: data.map(function(d) { return d.ambient_light; }), borderColor: '#fbbf24', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { ticks: { color: '#6b7280', maxTicksLimit: 6 } }, y: { ticks: { color: '#6b7280' } } }
+      }
+    });
   }
 
   // ---- Realtime 订阅 ----
