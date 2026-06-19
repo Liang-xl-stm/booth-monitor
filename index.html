@@ -718,7 +718,7 @@
             labels: labels,
             datasets: [{ label: '光照 (lx)', data: data.map(function(d) { return d.ambient_light; }), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)', fill: true, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#fbbf24', tension: 0.3 }]
           },
-          options: makeChartOptions(null, 'lx', '#fbbf24')
+          options: makeChartOptions(2000, 'lx', '#fbbf24')
         });
       }
     } catch (e) {
