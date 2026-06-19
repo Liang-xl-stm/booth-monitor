@@ -288,6 +288,7 @@ async function handleCommand(
     }).eq("id", body.cmd_id);
   }
 
+  const ok = resp.code === 0;
   return json(200, {
     success: ok, code: resp.code, msg: resp.msg,
   });
