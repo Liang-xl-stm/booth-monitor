@@ -204,14 +204,7 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
         results.push(`${device.device_name}: OK`);
       }
 
-      if (typeof beep === "boolean" || typeof armed === "boolean") {
-        const upd: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        if (typeof beep === "boolean") upd.beep_enabled = beep;
-        if (typeof armed === "boolean") upd.sensor_armed = armed;
-        await supabase.from("device_state").upsert(
-          { device_id: device.id, ...upd }, { onConflict: "device_id" }
-        );
-      }
+      // beep_enabled / sensor_armed 由用户按钮控制，不从 oneNET 覆盖
     } catch (e: any) {
       results.push(`${device.device_name}: ${e.message}`);
     }
