@@ -530,9 +530,9 @@
         }
       }
     });
-    // 同时拉全部数据刷新整个图表（避免数据错位）
-    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(20).then(function(r) {
-      if (r.data && r.data.length > 0) updateCharts(r.data);
+    // 取最新20条，反转后给图表（图表从左到右时间递增）
+    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(20).then(function(r) {
+      if (r.data && r.data.length > 0) { r.data.reverse(); updateCharts(r.data); }
     });
   }
 
@@ -549,7 +549,7 @@
 
       return Promise.all([
         supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single(),
-        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(20),
+        supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(20),
         supabase.from('device_state').select('*').eq('device_id', currentDeviceId).single(),
         supabase.from('alarm_events').select('*').eq('device_id', currentDeviceId).order('created_at', { ascending: false }).limit(20)
       ]);
@@ -557,6 +557,7 @@
       if (!results) return;
       if (results[0].data) updateMetricCards(results[0].data);
       if (results[1].data && results[1].data.length) {
+        results[1].data.reverse();
         mockTelemetry = results[1].data;
         updateCharts(results[1].data);
         $('nav-last-update').textContent = formatTime(results[1].data[results[1].data.length - 1].reported_at);
