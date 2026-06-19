@@ -10,11 +10,15 @@ const ONEAPI_BASE = "https://iot-api.heclouds.com";
 const API_VERSION = "2022-05-01";
 const API_METHOD = "sha256";
 
-const corsHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+function addCors(resp: Response, req: Request): Response {
+  const origin = req.headers.get("Origin") || "*";
+  resp.headers.set("Access-Control-Allow-Origin", origin);
+  resp.headers.set("Access-Control-Allow-Credentials", "true");
+  resp.headers.set("Access-Control-Allow-Headers", "authorization, x-client-info, apikey, content-type");
+  return resp;
+}
+
+const defaultHeaders = { "Content-Type": "application/json" };
 
 // ============================================================
 // Token 生成
@@ -71,7 +75,7 @@ async function onePost(path: string, accessKey: string, productId: string, body:
 // ============================================================
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return addCors(new Response("ok"), req);
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -81,16 +85,17 @@ serve(async (req: Request) => {
     const body = await req.json();
     const { action } = body;
 
+    let result: Response;
     if (action === "poll") {
-      return handlePoll(supabase);
+      result = await handlePoll(supabase);
+    } else if (action === "command") {
+      result = await handleCommand(supabase, body);
+    } else {
+      result = json(400, { error: "未知 action" });
     }
-    if (action === "command") {
-      return handleCommand(supabase, body);
-    }
-
-    return json(400, { error: "未知 action" });
+    return addCors(result, req);
   } catch (e: any) {
-    return json(500, { error: e.message });
+    return addCors(json(500, { error: e.message }), req);
   }
 });
 
@@ -322,6 +327,7 @@ async function handleCommand(
   });
 }
 
-function json(status: number, body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), { status, headers: corsHeaders });
+function json(status: number, body: Record<string, unknown>, req?: Request) {
+  const resp = new Response(JSON.stringify(body), { status, headers: defaultHeaders });
+  return req ? addCors(resp, req) : resp;
 }
