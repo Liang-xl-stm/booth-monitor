@@ -155,14 +155,47 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
       if (temp != null || hum != null || light != null) {
         const rawTime = getTime("temperature") || getTime("humidity") || getTime("ambient_light");
         const reportedAt = rawTime ? new Date(rawTime).toISOString() : new Date().toISOString();
+
+        // ---- 报警判断 ----
+        let alarmCode = 0;
+        if (typeof temp === "number" && temp > 35) alarmCode = 1;
+        else if (typeof hum === "number" && hum > 80) alarmCode = 2;
+        else if (typeof light === "number" && light < 100) alarmCode = 3;
+
+        const isAlarming = alarmCode !== 0;
+
+        // 查上次报警状态
+        const { data: lastAlarm } = await supabase.from("alarm_events")
+          .select("alarm_code").eq("device_id", device.id)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const lastCode = lastAlarm?.alarm_code ?? 0;
+        const wasAlarming = lastCode !== 0;
+
+        // 状态变化时插入报警事件
+        if (isAlarming !== wasAlarming || (isAlarming && alarmCode !== lastCode)) {
+          await supabase.from("alarm_events").insert({
+            device_id: device.id, alarm_code: alarmCode,
+          });
+          results.push(`${device.device_name}: 报警 code=${alarmCode}`);
+        }
+
+        // 写入遥测（带上正确的 alarm_status）
         await supabase.from("telemetry").insert({
           device_id: device.id,
-          temperature: temp,
-          humidity: hum,
-          ambient_light: light,
-          alarm_status: typeof alarm === "boolean" ? alarm : false,
+          temperature: temp, humidity: hum, ambient_light: light,
+          alarm_status: isAlarming,
           reported_at: reportedAt,
         });
+
+        // 只保留最新 60 条，删除旧数据
+        const { data: allIds } = await supabase.from("telemetry")
+          .select("id").eq("device_id", device.id)
+          .order("reported_at", { ascending: false });
+        if (allIds && allIds.length > 60) {
+          const idsToDelete = allIds.slice(60).map((r: any) => r.id);
+          await supabase.from("telemetry").delete().in("id", idsToDelete);
+        }
+
         results.push(`${device.device_name}: OK`);
       }
 
