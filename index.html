@@ -494,11 +494,11 @@
       loadSettings();
       // 前端主动触发 Edge Function 拉取 oneNET 数据（每 30 秒）
       if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(callEdgePoll, 30000);
+      pollTimer = setInterval(callEdgePoll, 10000);
       callEdgePoll(); // 立即执行一次
       // 每 10 秒刷新本地最新数据
       if (dataPollTimer) clearInterval(dataPollTimer);
-      dataPollTimer = setInterval(refreshLatest, 10000);
+      dataPollTimer = setInterval(refreshLatest, 5000);
     }
   }
 
