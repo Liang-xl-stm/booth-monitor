@@ -245,20 +245,6 @@ async function handlePoll(supabase: ReturnType<typeof createClient>) {
       const newStatus = resp.code === 0 ? "sent" : "failed";
       await supabase.from("device_commands").update({ status: newStatus }).eq("id", cmd.id);
 
-      // 同时更新 device_state，前端图标会即时响应
-      if (newStatus === "sent") {
-        if (cmd.command === "toggle_beep") {
-          // 翻转蜂鸣器状态
-          const { data: curState } = await supabase.from("device_state").select("beep_enabled").eq("device_id", dev.id).maybeSingle();
-          const newBeep = curState ? !curState.beep_enabled : true;
-          await supabase.from("device_state").upsert({ device_id: dev.id, beep_enabled: newBeep, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-        } else if (cmd.command === "arm") {
-          await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-        } else if (cmd.command === "disarm") {
-          await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: false, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-        }
-      }
-
       results.push(`CMD ${dev.device_name}: ${cmd.command} → ${newStatus}`);
     }
   }
@@ -300,19 +286,6 @@ async function handleCommand(
     await supabase.from("device_commands").update({
       status: resp.code === 0 ? "sent" : "failed"
     }).eq("id", body.cmd_id);
-  }
-
-  // 即时更新 device_state
-  const ok = resp.code === 0;
-  if (ok) {
-    if (body.command === "toggle_beep") {
-      const { data: s } = await supabase.from("device_state").select("beep_enabled").eq("device_id", dev.id).maybeSingle();
-      await supabase.from("device_state").upsert({ device_id: dev.id, beep_enabled: s ? !s.beep_enabled : true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-    } else if (body.command === "arm") {
-      await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: true, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-    } else if (body.command === "disarm") {
-      await supabase.from("device_state").upsert({ device_id: dev.id, sensor_armed: false, updated_at: new Date().toISOString() }, { onConflict: "device_id" });
-    }
   }
 
   return json(200, {
