@@ -532,11 +532,22 @@
   var pollTimer = null;
   function refreshLatest() {
     if (!supabase || !currentDeviceId || isDemo) return;
+    // 拉最新数据刷新卡片和图表
     supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: false }).limit(1).single().then(function(r) {
       if (r.data) {
         updateMetricCards(r.data);
         $('nav-last-update').textContent = formatTime(r.data.reported_at);
+        // 追加到图表
+        if (tempHumidityChart) {
+          var ts = new Date(r.data.reported_at).getTime();
+          addChartPoint(tempHumidityChart, ts, [r.data.temperature, r.data.humidity]);
+          addChartPoint(lightChart, ts, [r.data.ambient_light]);
+        }
       }
+    });
+    // 同时拉全部数据刷新整个图表（避免数据错位）
+    supabase.from('telemetry').select('*').eq('device_id', currentDeviceId).order('reported_at', { ascending: true }).limit(20).then(function(r) {
+      if (r.data && r.data.length > 0) updateCharts(r.data);
     });
   }
 
