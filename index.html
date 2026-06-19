@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>展台监测系统</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="chartjs-adapter.min.js"></script>
+<script src="chart.min.js"></script>
 <style>
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -280,22 +280,7 @@
 
 <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2" style="max-width:360px"></div>
 
-<!-- ================================================================
-  Chart.js CDN — 动态加载，失败不影响页面运行
-================================================================ -->
-<script>
-(function() {
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
-  s.onerror = function() {
-    console.warn('Chart.js CDN 加载失败，尝试备用源...');
-    var s2 = document.createElement('script');
-    s2.src = 'https://unpkg.com/chart.js@4/dist/chart.umd.min.js';
-    document.head.appendChild(s2);
-  };
-  document.head.appendChild(s);
-})();
-</script>
+<!-- Chart.js 本地文件加载，无需CDN -->
 
 <!-- Supabase JS SDK (本地文件) -->
 <script src="supabase.min.js"></script>
@@ -667,190 +652,78 @@
   }
 
   // ---- 图表 ----
-  function buildTimeScale(title, titleColor) {
-    return {
-      type: 'time',
-      time: {
-        unit: 'hour',
-        displayFormats: { hour: 'HH:mm', day: 'MM/dd' },
-        tooltipFormat: 'MM/dd HH:mm:ss',
+  function formatChartLabel(iso) {
+    var t = new Date(iso);
+    return ('0'+t.getHours()).slice(-2) + ':' + ('0'+t.getMinutes()).slice(-2);
+  }
+
+  function makeChartOptions(yMax, yTitle, yColor) {
+    var opt = {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { labels: { color: '#9ca3af', usePointStyle: true, pointStyleWidth: 8, padding: 16, font: { size: 11 } } },
+        tooltip: { backgroundColor: '#1f2937', borderColor: '#374151', borderWidth: 1, titleColor: '#f3f4f6', bodyColor: '#d1d5db', padding: 10, cornerRadius: 8 }
       },
-      grid: { color: 'rgba(255,255,255,0.06)', tickLength: 0 },
-      ticks: {
-        color: '#6b7280', font: { size: 10 }, maxTicksLimit: 10,
-        major: { enabled: true },
-      },
-      title: title ? { display: true, text: title, color: titleColor, font: { size: 10 } } : undefined,
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#6b7280', font: { size: 9 }, maxTicksLimit: 8, autoSkip: true } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#6b7280', font: { size: 9 } }, border: { display: false }, min: 0, max: yMax || 50 }
+      }
     };
+    if (yTitle) opt.scales.y.title = { display: true, text: yTitle, color: yColor, font: { size: 10 } };
+    return opt;
   }
 
   function updateCharts(data) {
-    if (typeof Chart === 'undefined') { console.warn('Chart.js 未加载，跳过图表渲染'); return; }
+    if (typeof Chart === 'undefined') { console.warn('Chart.js 未加载'); return; }
 
-    // 使用 Date 对象作为 X 轴数据（时间轴需要 {x, y} 格式）
-    var tempData = data.map(function(d) { return { x: new Date(d.reported_at).getTime(), y: d.temperature }; });
-    var humData  = data.map(function(d) { return { x: new Date(d.reported_at).getTime(), y: d.humidity }; });
-    var lightData = data.map(function(d) { return { x: new Date(d.reported_at).getTime(), y: d.ambient_light }; });
+    var labels = data.map(function(d) { return formatChartLabel(d.reported_at); });
 
     try {
+      // 温湿度图
       if (tempHumidityChart) {
-        tempHumidityChart.data.datasets[0].data = tempData;
-        tempHumidityChart.data.datasets[1].data = humData;
+        tempHumidityChart.data.labels = labels;
+        tempHumidityChart.data.datasets[0].data = data.map(function(d) { return d.temperature; });
+        tempHumidityChart.data.datasets[1].data = data.map(function(d) { return d.humidity; });
         tempHumidityChart.update('none');
       } else {
-        var ctx1 = $('chart-th').getContext('2d');
-        tempHumidityChart = new Chart(ctx1, {
+        tempHumidityChart = new Chart($('chart-th').getContext('2d'), {
           type: 'line',
           data: {
+            labels: labels,
             datasets: [
-              {
-                label: '温度 (℃)', data: tempData,
-                borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.04)',
-                borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
-                pointHoverBackgroundColor: '#f87171', tension: 0.3, yAxisID: 'y'
-              },
-              {
-                label: '湿度 (%)', data: humData,
-                borderColor: '#2dd4bf', backgroundColor: 'rgba(45,212,191,0.04)',
-                borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
-                pointHoverBackgroundColor: '#2dd4bf', tension: 0.3, yAxisID: 'y1'
-              }
+              { label: '温度 (℃)', data: data.map(function(d) { return d.temperature; }), borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#f87171', tension: 0.3, yAxisID: 'y' },
+              { label: '湿度 (%)', data: data.map(function(d) { return d.humidity; }), borderColor: '#2dd4bf', borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#2dd4bf', tension: 0.3, yAxisID: 'y1' }
             ]
           },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            animation: { duration: 400 },
-            interaction: { intersect: false, mode: 'index' },
-            plugins: {
-              legend: {
-                labels: { color: '#9ca3af', usePointStyle: true, pointStyleWidth: 8, padding: 20, font: { size: 11 } }
-              },
-              tooltip: {
-                backgroundColor: '#1f2937', borderColor: '#374151', borderWidth: 1,
-                titleColor: '#f3f4f6', bodyColor: '#d1d5db', padding: 10, cornerRadius: 8
-              }
-            },
-            scales: {
-              x: buildTimeScale(),
-              y: {
-                type:'linear', position:'left',
-                grid: { color: 'rgba(255,255,255,0.06)', tickLength: 0 },
-                ticks: { color: '#6b7280', font: { size: 10 } },
-                border: { display: false },
-                title: { display:true, text:'℃', color:'#f87171', font:{size:10} },
-                min: 0, max: 50
-              },
-              y1: {
-                type:'linear', position:'right',
-                grid: { display: false },
-                ticks: { color: '#6b7280', font: { size: 10 } },
-                title: { display:true, text:'%', color:'#2dd4bf', font:{size:10} },
-                min: 0, max: 100
-              }
-            }
-          }
+          options: Object.assign(makeChartOptions(50, '℃', '#f87171'), {
+            scales: Object.assign(makeChartOptions(50).scales, {
+              y: Object.assign(makeChartOptions(50).scales.y, { position: 'left' }),
+              y1: { type: 'linear', position: 'right', grid: { display: false }, ticks: { color: '#6b7280', font: { size: 9 } }, border: { display: false }, min: 0, max: 100, title: { display: true, text: '%', color: '#2dd4bf', font: { size: 10 } } }
+            })
+          })
         });
       }
 
+      // 光照图
       if (lightChart) {
-        lightChart.data.datasets[0].data = lightData;
+        lightChart.data.labels = labels;
+        lightChart.data.datasets[0].data = data.map(function(d) { return d.ambient_light; });
         lightChart.update('none');
       } else {
-        var ctx2 = $('chart-light').getContext('2d');
-        lightChart = new Chart(ctx2, {
+        lightChart = new Chart($('chart-light').getContext('2d'), {
           type: 'line',
           data: {
-            datasets: [{
-              label: '光照 (lx)', data: lightData,
-              borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)',
-              fill: true, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4,
-              pointHoverBackgroundColor: '#fbbf24', tension: 0.3
-            }]
+            labels: labels,
+            datasets: [{ label: '光照 (lx)', data: data.map(function(d) { return d.ambient_light; }), borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.08)', fill: true, borderWidth: 1.5, pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: '#fbbf24', tension: 0.3 }]
           },
-          options: {
-            responsive: true, maintainAspectRatio: false,
-            animation: { duration: 400 },
-            interaction: { intersect: false, mode: 'index' },
-            plugins: {
-              legend: {
-                labels: { color: '#9ca3af', usePointStyle: true, pointStyleWidth: 8, padding: 20, font: { size: 11 } }
-              },
-              tooltip: {
-                backgroundColor: '#1f2937', borderColor: '#374151', borderWidth: 1,
-                titleColor: '#f3f4f6', bodyColor: '#d1d5db', padding: 10, cornerRadius: 8
-              }
-            },
-            scales: {
-              x: buildTimeScale(),
-              y: {
-                grid: { color: 'rgba(255,255,255,0.06)', tickLength: 0 },
-                ticks: { color: '#6b7280', font: { size: 10 } },
-                border: { display: false },
-                title: { display:true, text:'lx', color:'#fbbf24', font:{size:10} }
-              }
-            }
-          }
+          options: makeChartOptions(null, 'lx', '#fbbf24')
         });
       }
     } catch (e) {
-      console.error('图表渲染失败:', e.message || e, 'Chart存在:', typeof Chart !== 'undefined');
-      // 降级：不用时间轴，直接显示
-      try {
-        renderChartsFallback(data);
-      } catch (e2) {
-        console.error('降级渲染也失败:', e2.message || e2);
-      }
+      console.error('图表渲染失败:', e.message || e);
     }
-  }
-
-  // 降级渲染：不用时间轴，字符串标签
-  function renderChartsFallback(data) {
-    var labels = data.map(function(d) {
-      var t = new Date(d.reported_at);
-      return t.getHours() + ':' + ('0'+t.getMinutes()).slice(-2);
-    });
-
-    if (tempHumidityChart) {
-      tempHumidityChart.destroy();
-      tempHumidityChart = null;
-    }
-    if (lightChart) {
-      lightChart.destroy();
-      lightChart = null;
-    }
-
-    var ctx1 = $('chart-th').getContext('2d');
-    tempHumidityChart = new Chart(ctx1, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: '温度 (℃)', data: data.map(function(d) { return d.temperature; }), borderColor: '#f87171', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
-          { label: '湿度 (%)', data: data.map(function(d) { return d.humidity; }), borderColor: '#2dd4bf', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y1' }
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: '#6b7280', maxTicksLimit: 6 } },
-          y: { type:'linear', position:'left', ticks:{color:'#6b7280'}, min:0, max:50 },
-          y1: { type:'linear', position:'right', ticks:{color:'#6b7280'}, min:0, max:100, grid:{display:false} }
-        }
-      }
-    });
-
-    var ctx2 = $('chart-light').getContext('2d');
-    lightChart = new Chart(ctx2, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [{ label: '光照 (lx)', data: data.map(function(d) { return d.ambient_light; }), borderColor: '#fbbf24', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: { x: { ticks: { color: '#6b7280', maxTicksLimit: 6 } }, y: { ticks: { color: '#6b7280' } } }
-      }
-    });
   }
 
   // ---- Realtime 订阅 ----
@@ -864,9 +737,9 @@
           updateMetricCards(payload.new);
           $('nav-last-update').textContent = formatTime(payload.new.reported_at);
           if (tempHumidityChart) {
-            var ts = new Date(payload.new.reported_at).getTime();
-            addChartPoint(tempHumidityChart, ts, [payload.new.temperature, payload.new.humidity]);
-            addChartPoint(lightChart, ts, [payload.new.ambient_light]);
+            var label = formatChartLabel(payload.new.reported_at);
+            addChartPoint(tempHumidityChart, label, [payload.new.temperature, payload.new.humidity]);
+            addChartPoint(lightChart, label, [payload.new.ambient_light]);
           }
           if (payload.new.alarm_status) showToast('⚠️ 设备触发报警！', 'error');
         })
@@ -887,12 +760,12 @@
       });
   }
 
-  function addChartPoint(chart, ts, values) {
+  function addChartPoint(chart, label, values) {
     if (!chart) return;
-    values.forEach(function(v, i) {
-      chart.data.datasets[i].data.push({ x: ts, y: v });
-    });
+    chart.data.labels.push(label);
+    values.forEach(function(v, i) { chart.data.datasets[i].data.push(v); });
     if (chart.data.datasets[0].data.length > 20) {
+      chart.data.labels.shift();
       chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
     }
     chart.update('none');
